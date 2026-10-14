@@ -28,3 +28,6 @@ secrets*
 *.tmp
 .state/
 machine-state/
+
+# 部署者自己的页面配置（示例见 web/config.example.js）
+web/config.js

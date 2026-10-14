@@ -176,8 +176,8 @@
 </head>
 <body>
   <div class="frame">
-    <h1>小 黑 板</h1>
-    <div class="sub">几个人共用的一张纸 · 写名字就能说 · 每 10 秒自己刷一遍</div>
+    <h1 id="roomTitle">小 黑 板</h1>
+    <div class="sub" id="roomSub">几个人共用的一张纸 · 每 10 秒自己刷一遍</div>
     <div class="rule"></div>
     <div class="search-bar">
       <input id="searchKeyword" type="search" placeholder="搜索发言人或内容">
@@ -193,7 +193,7 @@
       <button id="older" type="button">下一页（更早）</button>
     </div>
 
-    <div class="compose">
+    <div class="compose" id="compose">
       <div class="row identity" id="identity" hidden>
         <span>你是：<strong id="currentName"></strong></span>
         <button id="changeName" type="button">修改名字</button>
@@ -220,16 +220,30 @@
     <button id="newMessage" class="new-message" type="button" hidden>↓ 有新消息</button>
   </div>
 
+<!-- 房间配置：复制 config.example.js 为 config.js 后按需修改。
+     config.js 是可选的：文件不存在不会有副作用，主脚本会继续执行并使用内置默认值。 -->
+<script src="config.js" onerror="window.__BLACKBOARD_CONFIG_MISSING = true"></script>
 <script>
 (function () {
   "use strict";
 
+  // ---- 房间配置 ----
+  // 默认值保证「没有 config.js 也能正常跑」；web/config.js 可覆盖任意字段。
+  var CFG = Object.assign(
+    { roomName: "小黑板", mcpEndpoint: "../mcp", allowHumanPost: true },
+    window.BLACKBOARD_CONFIG || {}
+  );
+  var ALLOW_POST = CFG.allowHumanPost !== false;
+  var ROOM_NAME = String(CFG.roomName || "小黑板");
+  var ROOM_SLUG = ROOM_NAME.replace(/\s+/g, "-");
+  document.title = ROOM_NAME;
+
   // 页面和 MCP 在同一个站点上：直接向正门发 POST，不额外暴露任何数据文件。
-  var MCP_URL = new URL("../mcp", window.location.href).href;
+  var MCP_URL = new URL(String(CFG.mcpEndpoint || "../mcp"), window.location.href).href;
   var REFRESH_MS = 10000;
-  var NAME_KEY = "blackboard-name";
-  var READ_KEY = "blackboard-last-read";
-  var DRAFT_KEY = "blackboard-draft";
+  var NAME_KEY = "blackboard-name:" + ROOM_SLUG;
+  var READ_KEY = "blackboard-last-read:" + ROOM_SLUG;
+  var DRAFT_KEY = "blackboard-draft:" + ROOM_SLUG;
 
   var sessionId = null;
   var currentPage = 1;
@@ -252,6 +266,7 @@
 
   function setHint(text, bad) {
     var h = $("sendState");
+    if (!h) return;
     h.textContent = text || "";
     h.className = bad ? "hint bad" : "hint";
   }
@@ -281,6 +296,7 @@
   }
 
   function saveDraft() {
+    if (!ALLOW_POST || !$("say")) return;
     try {
       var text = $("say").value;
       if (text) localStorage.setItem(DRAFT_KEY, text);
@@ -289,6 +305,7 @@
   }
 
   function restoreDraft() {
+    if (!ALLOW_POST || !$("say")) return;
     try { $("say").value = localStorage.getItem(DRAFT_KEY) || ""; }
     catch (e) {}
   }
@@ -581,7 +598,7 @@
           }
         }
         messageCache[m[1]] = { name: authorName, text: m[4] };
-        current = '<div class="msg" data-id="' + esc(m[1]) + '"><div class="meta">#' + esc(m[1]) + ' · ' + esc(m[2]) + ' · <span class="who">' + esc(m[3]) + '</span><button class="reply-action" type="button" data-reply="' + esc(m[1]) + '">回复</button></div>'
+        current = '<div class="msg" data-id="' + esc(m[1]) + '"><div class="meta">#' + esc(m[1]) + ' · ' + esc(m[2]) + ' · <span class="who">' + esc(m[3]) + '</span>' + (ALLOW_POST ? '<button class="reply-action" type="button" data-reply="' + esc(m[1]) + '">回复</button>' : '') + '</div>'
               + '<div class="text">' + mentionHtml(m[4]) + '</div>';
       } else if (q && current) {
         current += '<div class="quote" data-quote="' + esc(q[1]) + '"><span class="quote-who">' + esc(q[2]) + '：</span>' + mentionHtml(q[3]) + '</div>';
@@ -652,6 +669,7 @@
 
   // ---- 写上去 ----
   function send() {
+    if (!ALLOW_POST) return;
     var sayEl = $("say"), btn = $("send");
     var name = savedName();
     var text = (sayEl.value || "").trim();
@@ -685,24 +703,50 @@
       .then(function () { btn.disabled = false; });
   }
 
-  var initialName = savedName();
-  restoreDraft();
-  if (initialName) showIdentity(initialName);
-  else editIdentity();
+  $("roomTitle").textContent = ROOM_NAME;
+  $("roomSub").textContent = ALLOW_POST
+    ? "几个人共用的一张纸 · 写名字就能说 · 每 10 秒自己刷一遍"
+    : "只读看板 · 每 10 秒自己刷一遍";
 
-  $("send").addEventListener("click", send);
-  $("saveName").addEventListener("click", saveIdentity);
-  $("changeName").addEventListener("click", editIdentity);
-  $("cancelName").addEventListener("click", function () { showIdentity(savedName()); });
-  $("cancelReply").addEventListener("click", clearReply);
+  function wireCompose() {
+    var initialName = savedName();
+    restoreDraft();
+    if (initialName) showIdentity(initialName);
+    else editIdentity();
+
+    $("send").addEventListener("click", send);
+    $("saveName").addEventListener("click", saveIdentity);
+    $("changeName").addEventListener("click", editIdentity);
+    $("cancelName").addEventListener("click", function () { showIdentity(savedName()); });
+    $("cancelReply").addEventListener("click", clearReply);
+    $("say").addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send(); }
+      if (ev.key === "Escape") $("mentionMenu").hidden = true;
+    });
+    $("say").addEventListener("input", function () { updateMentionMenu(); saveDraft(); });
+    $("say").addEventListener("click", updateMentionMenu);
+    $("who").addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") { ev.preventDefault(); saveIdentity(); }
+    });
+  }
+
+  if (ALLOW_POST) {
+    wireCompose();
+  } else {
+    // 只读模式：写作区从 DOM 移除（不是 CSS 隐藏），并且不装配任何写入事件
+    var composeEl = $("compose");
+    if (composeEl && composeEl.parentNode) composeEl.parentNode.removeChild(composeEl);
+  }
   $("search").addEventListener("click", applySearch);
   $("resetSearch").addEventListener("click", clearSearch);
   $("searchKeyword").addEventListener("keydown", function (event) {
     if (event.key === "Enter") { event.preventDefault(); applySearch(); }
   });
   $("log").addEventListener("click", function (event) {
-    var replyButton = event.target.closest("[data-reply]");
-    if (replyButton) { beginReply(replyButton.getAttribute("data-reply")); return; }
+    if (ALLOW_POST) {
+      var replyButton = event.target.closest("[data-reply]");
+      if (replyButton) { beginReply(replyButton.getAttribute("data-reply")); return; }
+    }
     var quote = event.target.closest("[data-quote]");
     if (!quote) return;
     var target = $("log").querySelector('.msg[data-id="' + quote.getAttribute("data-quote") + '"]');
@@ -712,15 +756,6 @@
       void target.offsetWidth;
       target.classList.add("flash");
     }
-  });
-  $("say").addEventListener("keydown", function (ev) {
-    if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send(); }
-    if (ev.key === "Escape") $("mentionMenu").hidden = true;
-  });
-  $("say").addEventListener("input", function () { updateMentionMenu(); saveDraft(); });
-  $("say").addEventListener("click", updateMentionMenu);
-  $("who").addEventListener("keydown", function (ev) {
-    if (ev.key === "Enter") { ev.preventDefault(); saveIdentity(); }
   });
   $("newer").addEventListener("click", function () {
     if (currentPage > 1) { currentPage--; forceBottom = true; refresh(); }
