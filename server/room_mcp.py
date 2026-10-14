@@ -140,7 +140,14 @@ def _connection_name(ctx, supplied: str = "") -> str:
         request_context = getattr(ctx, "request_context", None)
         request = getattr(request_context, "request", None)
         headers = getattr(request, "headers", None) or {}
-    trusted = str(headers.get("x-room-member", "")).strip()[:NAME_MAX]
+    # 反代按 UTF-8 注入身份头（可能含中文名），而 HTTP 头按 latin-1 解码 → 这里补一次还原。
+    # 纯 ASCII 名字不受影响；还原失败就原样使用。
+    member = str(headers.get("x-room-member", "")).strip()
+    try:
+        member = member.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass
+    trusted = member[:NAME_MAX]
     if trusted:
         return trusted
     return (supplied or "").strip()[:NAME_MAX]
