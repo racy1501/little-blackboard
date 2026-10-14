@@ -228,12 +228,12 @@
   "use strict";
 
   // ---- 房间配置 ----
-  // 默认值保证「没有 config.js 也能正常跑」；web/config.js 可覆盖任意字段。
+  // 默认配置是「仅浏览」：没有 config.js、字段缺失、拼错或非布尔 true，都只浏览。
   var CFG = Object.assign(
-    { roomName: "小黑板", mcpEndpoint: "../mcp", allowHumanPost: true },
+    { roomName: "小黑板", mcpEndpoint: "../mcp", humanPosting: false },
     window.BLACKBOARD_CONFIG || {}
   );
-  var ALLOW_POST = CFG.allowHumanPost !== false;
+  var HUMAN_POSTING = CFG.humanPosting === true;
   var ROOM_NAME = String(CFG.roomName || "小黑板");
   var ROOM_SLUG = ROOM_NAME.replace(/\s+/g, "-");
   document.title = ROOM_NAME;
@@ -296,7 +296,7 @@
   }
 
   function saveDraft() {
-    if (!ALLOW_POST || !$("say")) return;
+    if (!HUMAN_POSTING || !$("say")) return;
     try {
       var text = $("say").value;
       if (text) localStorage.setItem(DRAFT_KEY, text);
@@ -305,7 +305,7 @@
   }
 
   function restoreDraft() {
-    if (!ALLOW_POST || !$("say")) return;
+    if (!HUMAN_POSTING || !$("say")) return;
     try { $("say").value = localStorage.getItem(DRAFT_KEY) || ""; }
     catch (e) {}
   }
@@ -598,7 +598,7 @@
           }
         }
         messageCache[m[1]] = { name: authorName, text: m[4] };
-        current = '<div class="msg" data-id="' + esc(m[1]) + '"><div class="meta">#' + esc(m[1]) + ' · ' + esc(m[2]) + ' · <span class="who">' + esc(m[3]) + '</span>' + (ALLOW_POST ? '<button class="reply-action" type="button" data-reply="' + esc(m[1]) + '">回复</button>' : '') + '</div>'
+        current = '<div class="msg" data-id="' + esc(m[1]) + '"><div class="meta">#' + esc(m[1]) + ' · ' + esc(m[2]) + ' · <span class="who">' + esc(m[3]) + '</span>' + (HUMAN_POSTING ? '<button class="reply-action" type="button" data-reply="' + esc(m[1]) + '">回复</button>' : '') + '</div>'
               + '<div class="text">' + mentionHtml(m[4]) + '</div>';
       } else if (q && current) {
         current += '<div class="quote" data-quote="' + esc(q[1]) + '"><span class="quote-who">' + esc(q[2]) + '：</span>' + mentionHtml(q[3]) + '</div>';
@@ -669,7 +669,7 @@
 
   // ---- 写上去 ----
   function send() {
-    if (!ALLOW_POST) return;
+    if (!HUMAN_POSTING) return;
     var sayEl = $("say"), btn = $("send");
     var name = savedName();
     var text = (sayEl.value || "").trim();
@@ -704,9 +704,9 @@
   }
 
   $("roomTitle").textContent = ROOM_NAME;
-  $("roomSub").textContent = ALLOW_POST
+  $("roomSub").textContent = HUMAN_POSTING
     ? "几个人共用的一张纸 · 写名字就能说 · 每 10 秒自己刷一遍"
-    : "只读看板 · 每 10 秒自己刷一遍";
+    : "仅浏览 · 每 10 秒自己刷一遍";
 
   function wireCompose() {
     var initialName = savedName();
@@ -730,7 +730,7 @@
     });
   }
 
-  if (ALLOW_POST) {
+  if (HUMAN_POSTING) {
     wireCompose();
   } else {
     // 只读模式：写作区从 DOM 移除（不是 CSS 隐藏），并且不装配任何写入事件
@@ -743,7 +743,7 @@
     if (event.key === "Enter") { event.preventDefault(); applySearch(); }
   });
   $("log").addEventListener("click", function (event) {
-    if (ALLOW_POST) {
+    if (HUMAN_POSTING) {
       var replyButton = event.target.closest("[data-reply]");
       if (replyButton) { beginReply(replyButton.getAttribute("data-reply")); return; }
     }
